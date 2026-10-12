@@ -14,7 +14,7 @@ def test_health():
 def test_root():
     r = client.get("/")
     assert r.status_code == 200
-    assert "message" in r.json()
+    assert "FastAPI Cloud Microservice" in r.text
 
 
 def test_version():
