@@ -1,0 +1,10 @@
+.git
+tests
+reports
+infra
+scripts
+__pycache__
+*.pyc
+.venv
+Jenkinsfile
+README.md

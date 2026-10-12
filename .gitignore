@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+reports/
+.coverage
+infra/.terraform/
+infra/*.tfstate*
+infra/terraform.tfvars
+new-td.json
+td.json

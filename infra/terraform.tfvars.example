@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars and fill in. Leave optional ones empty to skip.
+region            = ""   # e.g. your AWS region
+admin_cidr        = ""   # your public IP, e.g. "203.0.113.10/32"  (https://checkip.amazonaws.com)
+github_hook_cidrs = []   # paste IPv4 ranges from: curl -s https://api.github.com/meta | jq -r '.hooks[]'
+jenkins_key_name  = ""   # optional EC2 key pair (else use SSM Session Manager)
+alert_email       = ""   # optional, for CloudWatch alarm emails
+certificate_arn   = ""   # optional ACM cert ARN to enable HTTPS
