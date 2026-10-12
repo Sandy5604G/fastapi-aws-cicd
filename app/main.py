@@ -2,14 +2,12 @@ import os
 import time
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 START = time.time()
 VERSION = os.getenv("APP_VERSION", "dev")
 
 app = FastAPI(title="FastAPI CI/CD on AWS ECS", version=VERSION)
-
-
-from fastapi.responses import HTMLResponse
 
 
 @app.get("/", response_class=HTMLResponse)
