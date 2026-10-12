@@ -1,0 +1,118 @@
+================================================================================
+FASTAPI AWS CI/CD PRODUCTION DEPLOYMENT SUMMARY & ARCHITECTURE REPORT
+================================================================================
+Generated for: Sandeep (Sandy5604G)
+Date: 2026-10-12
+AWS Region: ap-south-1 (Mumbai)
+AWS Account ID: 800168266526
+
+--------------------------------------------------------------------------------
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+This project implements an enterprise-grade Continuous Integration and
+Continuous Deployment (CI/CD) pipeline for a modern FastAPI web microservice
+deployed on Amazon Web Services (AWS). 
+
+Infrastructure is 100% codified using Terraform, with automated quality gates,
+security scanning (Aqua Security Trivy), and zero-downtime rolling deployments
+to AWS ECS Fargate via an Application Load Balancer (ALB).
+
+--------------------------------------------------------------------------------
+2. LIVE ENDPOINTS & ACCESS
+--------------------------------------------------------------------------------
+- Live Webpage Dashboard:
+  http://fastapi-cicd-alb-1317333918.ap-south-1.elb.amazonaws.com
+
+- Interactive Swagger API Documentation:
+  http://fastapi-cicd-alb-1317333918.ap-south-1.elb.amazonaws.com/docs
+
+- Health Check Endpoint:
+  http://fastapi-cicd-alb-1317333918.ap-south-1.elb.amazonaws.com/health
+
+- Version Check Endpoint:
+  http://fastapi-cicd-alb-1317333918.ap-south-1.elb.amazonaws.com/version
+
+- Jenkins CI/CD Dashboard:
+  http://65.1.87.197:8080
+
+- GitHub Repository:
+  https://github.com/Sandy5604G/fastapi-aws-cicd
+
+--------------------------------------------------------------------------------
+3. END-TO-END ARCHITECTURE & DATA FLOW
+--------------------------------------------------------------------------------
+1. Code Commit:
+   Developer pushes code to the 'main' branch on GitHub.
+
+2. Webhook Event:
+   GitHub sends an automated HTTP POST webhook to the Jenkins server running
+   on AWS EC2.
+
+3. Jenkins Pipeline Execution:
+   - Stage 1: Validate & Prepare
+     Extracts Git commit SHA tag (e.g., a1faee06) and verifies environment.
+   - Stage 2: Quality & Unit Testing
+     Runs Ruff linter and Pytest in an isolated Docker container with an 80%
+     code coverage gate (achieved 100% test coverage).
+   - Stage 3: Docker Image Build
+     Builds production-ready multi-stage Docker container.
+   - Stage 4: Trivy Security Scan
+     Scans the built container for CVE vulnerabilities. Gates the build on
+     0 HIGH and 0 CRITICAL vulnerabilities.
+   - Stage 5: ECR Image Push
+     Logs into Amazon ECR via an attached IAM Role and pushes the immutable
+     git-SHA tagged image.
+   - Stage 6: Rolling Deployment to ECS Fargate
+     Registers a new Task Definition revision and triggers rolling update
+     with deployment circuit breaker (automatic rollback if tasks fail health).
+   - Stage 7: Smoke Testing
+     Queries the live ALB endpoint until the new version SHA is verified live.
+
+--------------------------------------------------------------------------------
+4. INFRASTRUCTURE COMPONENTS (PROVISIONED VIA TERRAFORM)
+--------------------------------------------------------------------------------
+- Networking:
+  * 1 Custom VPC (10.20.0.0/16)
+  * 2 Public Subnets across two Availability Zones (for ALB and NAT Gateway)
+  * 2 Private Subnets across two Availability Zones (for isolated ECS tasks)
+  * 1 Internet Gateway & 1 NAT Gateway with Elastic IP
+
+- Compute & Containers:
+  * AWS ECS Cluster: fastapi-cicd-cluster
+  * AWS ECS Service: fastapi-cicd-service (Fargate launch type)
+  * Amazon ECR: 800168266526.dkr.ecr.ap-south-1.amazonaws.com/fastapi-cicd
+  * EC2 Instance: t3.small Ubuntu 24.04 hosting Jenkins LTS
+
+- Load Balancing & Routing:
+  * Application Load Balancer (ALB): fastapi-cicd-alb
+  * Target Group: fastapi-cicd-tg with HTTP health checks on /health
+
+- Security & Compliance:
+  * Least-privilege IAM Roles for ECS Execution, Task, and Jenkins Instance
+  * Strict Security Groups (ALB accepts port 80; ECS tasks only accept traffic
+    forwarded from ALB)
+  * IMDSv2 enforced on EC2 instance; EBS gp3 storage encrypted at rest
+
+- Monitoring:
+  * CloudWatch Log Group: /ecs/fastapi-cicd
+  * CloudWatch Alarms: ALB 5xx errors, unhealthy target count, and high CPU
+
+--------------------------------------------------------------------------------
+5. HOW TO DEPLOY CODE CHANGES
+--------------------------------------------------------------------------------
+Simply commit and push your updates from the project directory:
+   cd /home/sandeep/Downloads/fastapi-aws-cicd-extracted/fastapi-aws-cicd
+   git add .
+   git commit -m "feat: description of change"
+   git push origin main
+
+The pipeline will automatically run all tests, scans, and deploy the new version
+to AWS with zero downtime.
+
+--------------------------------------------------------------------------------
+6. TEARDOWN INSTRUCTIONS (TO AVOID ONGOING AWS CHARGES)
+--------------------------------------------------------------------------------
+When you are done with the project and want to destroy all cloud resources:
+   cd /home/sandeep/Downloads/fastapi-aws-cicd-extracted/fastapi-aws-cicd/infra
+   terraform destroy -auto-approve
+================================================================================
