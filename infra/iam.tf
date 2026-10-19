@@ -57,7 +57,8 @@ data "aws_iam_policy_document" "jenkins" {
     sid = "EcrPush"
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
-      "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"
+      "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer",
+      "ecr:DescribeImages"
     ]
     resources = [aws_ecr_repository.app.arn]
   }
@@ -75,6 +76,16 @@ data "aws_iam_policy_document" "jenkins" {
     sid       = "PassTaskRoles"
     actions   = ["iam:PassRole"]
     resources = [aws_iam_role.task_execution.arn, aws_iam_role.task.arn]
+  }
+  statement {
+    sid       = "DescribeALB"
+    actions   = ["elasticloadbalancing:DescribeLoadBalancers"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "SnsPublishAlarms"
+    actions   = ["sns:Publish"]
+    resources = ["*"]
   }
 }
 

@@ -8,20 +8,21 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
 
-  triggers { githubPush() }
+  triggers {
+    githubPush()
+    pollSCM('H/5 * * * *')
+  }
 
   environment {
-    // ====== FILL THESE IN (values come from `terraform output`) ======
     AWS_REGION      = 'ap-south-1'
-    AWS_ACCOUNT_ID  = '800168266526'
-    ALB_URL         = 'http://fastapi-cicd-alb-1317333918.ap-south-1.elb.amazonaws.com'
-    // ====== Defaults match infra/variables.tf (project = fastapi-cicd) ======
     ECR_REPO        = 'fastapi-cicd'
     ECS_CLUSTER     = 'fastapi-cicd-cluster'
     ECS_SERVICE     = 'fastapi-cicd-service'
     ECS_TASK_FAMILY = 'fastapi-cicd-task'
-    DESIRED_COUNT   = '2'
+    ALB_NAME        = 'fastapi-cicd-alb'
     TRIVY_VERSION   = '0.57.1'
+    // Optional: set to your CloudWatch / Alarm SNS Topic ARN for failure notifications
+    SNS_TOPIC_ARN   = ''
   }
 
   stages {
@@ -29,14 +30,37 @@ pipeline {
     stage('Validate & Prepare') {
       steps {
         script {
-          if (!env.AWS_REGION?.trim() || !env.AWS_ACCOUNT_ID?.trim() || !env.ALB_URL?.trim()) {
-            error 'Fill AWS_REGION, AWS_ACCOUNT_ID and ALB_URL in the Jenkinsfile environment block.'
+          env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short=8 HEAD').trim()
+
+          // Dynamic AWS Account ID lookup with fallback
+          try {
+            env.AWS_ACCOUNT_ID = sh(returnStdout: true, script: 'aws sts get-caller-identity --query Account --output text').trim()
+          } catch (Exception e) {
+            echo "sts:GetCallerIdentity lookup failed or not on EC2 role; checking environment fallback..."
+            if (!env.AWS_ACCOUNT_ID?.trim()) {
+              error 'Unable to resolve AWS_ACCOUNT_ID automatically. Set AWS_ACCOUNT_ID in environment or verify IAM role.'
+            }
           }
-          env.GIT_SHA   = sh(returnStdout: true, script: 'git rev-parse --short=8 HEAD').trim()
-          env.REGISTRY  = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          env.IMAGE_URI = "${env.REGISTRY}/${ECR_REPO}:${env.GIT_SHA}"
+
+          env.REGISTRY  = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+          env.IMAGE_URI = "${env.REGISTRY}/${env.ECR_REPO}:${env.GIT_SHA}"
           env.IS_MAIN   = (env.GIT_BRANCH ==~ /(origin\/)?main/) ? 'true' : 'false'
-          echo "Image: ${env.IMAGE_URI} | deploy branch: ${env.IS_MAIN}"
+
+          // Dynamic ALB DNS name lookup
+          try {
+            env.ALB_DNS = sh(returnStdout: true, script: """
+              aws elbv2 describe-load-balancers --names ${env.ALB_NAME} --region ${env.AWS_REGION} \
+                --query 'LoadBalancers[0].DNSName' --output text
+            """).trim()
+            env.ALB_URL = "http://${env.ALB_DNS}"
+          } catch (Exception e) {
+            echo "ALB lookup failed; checking fallback..."
+            if (!env.ALB_URL?.trim()) {
+              error "Could not resolve DNS for ALB ${env.ALB_NAME}. Ensure ALB exists and Jenkins role has elasticloadbalancing:DescribeLoadBalancers."
+            }
+          }
+
+          echo "Target image: ${env.IMAGE_URI} | ALB URL: ${env.ALB_URL} | Branch is main: ${env.IS_MAIN}"
         }
       }
     }
@@ -48,6 +72,7 @@ pipeline {
           docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e PIP_CACHE_DIR=/tmp/pip \
             -v "$WORKSPACE":/w -w /w python:3.12-slim sh -c "
               pip install --user -q -r requirements-dev.txt &&
+              python -m ruff format --check app tests &&
               python -m ruff check app tests &&
               python -m pytest --junitxml=reports/junit.xml \
                 --cov=app --cov-report=xml:reports/coverage.xml --cov-fail-under=80"
@@ -65,9 +90,12 @@ pipeline {
     stage('Security Scan (Trivy)') {
       steps {
         sh '''
+          mkdir -p reports
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v trivy-cache:/root/.cache aquasec/trivy:${TRIVY_VERSION} image \
-            --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress ${IMAGE_URI}
+            --db-repository public.ecr.aws/aquasecurity/trivy-db:2 \
+            --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress \
+            --output /dev/stdout ${IMAGE_URI} | tee reports/trivy.txt
         '''
       }
     }
@@ -78,7 +106,13 @@ pipeline {
         sh '''
           aws ecr get-login-password --region ${AWS_REGION} | \
             docker login --username AWS --password-stdin ${REGISTRY}
-          docker push ${IMAGE_URI}
+
+          if aws ecr describe-images --repository-name ${ECR_REPO} \
+               --image-ids imageTag=${GIT_SHA} --region ${AWS_REGION} >/dev/null 2>&1; then
+            echo "Image ${GIT_SHA} already in ECR, skipping push (idempotent)."
+          else
+            docker push ${IMAGE_URI}
+          fi
         '''
       }
     }
@@ -92,21 +126,39 @@ pipeline {
       when { expression { env.IS_MAIN == 'true' } }
       steps {
         sh '''
-          for i in $(seq 1 10); do
-            if curl -fsS "${ALB_URL}/version" | grep -q "${GIT_SHA}"; then
-              echo "Smoke test passed: ${GIT_SHA} is live"; exit 0
+          for i in $(seq 1 12); do
+            RESPONSE=$(curl -fsS "${ALB_URL}/version" 2>/dev/null || true)
+            if echo "$RESPONSE" | grep -q "${GIT_SHA}"; then
+              echo "Smoke test passed: ${GIT_SHA} is live on ALB ($RESPONSE)"; exit 0
             fi
-            echo "Waiting for new version... ($i/10)"; sleep 10
+            echo "Waiting for version ${GIT_SHA}... ($i/12)"; sleep 10
           done
-          echo "Smoke test failed"; exit 1
+          echo "Smoke test failed: Version ${GIT_SHA} not verified on ALB within timeout"; exit 1
         '''
       }
     }
   }
 
   post {
-    success { echo "Deployed ${env.IMAGE_URI}" }
-    failure { echo 'Failed. If it failed during deploy, the ECS circuit breaker has rolled back automatically.' }
-    always  { sh 'docker image prune -f || true' }
+    success { echo "Pipeline succeeded: Deployed ${env.IMAGE_URI}." }
+    failure {
+      script {
+        echo 'Pipeline failed. If deployment reached ECS and tasks failed health checks, circuit breaker auto-rolled back.'
+        if (env.SNS_TOPIC_ARN?.trim()) {
+          sh """
+            aws sns publish --topic-arn ${env.SNS_TOPIC_ARN} --region ${env.AWS_REGION} \
+              --subject "Pipeline failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}" \
+              --message "SHA ${env.GIT_SHA} - ${env.BUILD_URL}" || true
+          """
+        }
+      }
+    }
+    always {
+      archiveArtifacts artifacts: 'reports/*', allowEmptyArchive: true
+      sh '''
+        docker image prune -af --filter "until=24h" || true
+        docker builder prune -f --filter "until=24h" || true
+      '''
+    }
   }
 }

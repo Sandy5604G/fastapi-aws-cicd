@@ -4,7 +4,6 @@
 set -euo pipefail
 
 : "${AWS_REGION:?}" "${ECS_CLUSTER:?}" "${ECS_SERVICE:?}" "${ECS_TASK_FAMILY:?}" "${IMAGE_URI:?}"
-DESIRED_COUNT="${DESIRED_COUNT:-2}"
 
 echo ">> Fetching current task definition: ${ECS_TASK_FAMILY}"
 aws ecs describe-task-definition --region "$AWS_REGION" \
@@ -19,10 +18,9 @@ NEW_ARN=$(aws ecs register-task-definition --region "$AWS_REGION" \
   --cli-input-json file://new-td.json --query 'taskDefinition.taskDefinitionArn' --output text)
 echo "   -> ${NEW_ARN}"
 
-echo ">> Updating service ${ECS_SERVICE}"
+echo ">> Updating service ${ECS_SERVICE} with new task definition"
 aws ecs update-service --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
-  --service "$ECS_SERVICE" --task-definition "$NEW_ARN" \
-  --desired-count "$DESIRED_COUNT" >/dev/null
+  --service "$ECS_SERVICE" --task-definition "$NEW_ARN" >/dev/null
 
 echo ">> Waiting for service to become stable..."
 aws ecs wait services-stable --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
