@@ -25,7 +25,21 @@ aws ecs update-service --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
 echo ">> Waiting for service to become stable..."
 aws ecs wait services-stable --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
 
-ROLLOUT=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
-  --services "$ECS_SERVICE" --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
-echo ">> Rollout state: ${ROLLOUT}"
-[ "$ROLLOUT" = "COMPLETED" ] || { echo "Deployment did not complete (rolled back?)"; exit 1; }
+echo ">> Waiting for rollout to complete..."
+for i in $(seq 1 18); do
+  ROLLOUT=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
+    --services "$ECS_SERVICE" --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+  echo ">> Rollout state: ${ROLLOUT} ($i/18)"
+  if [ "$ROLLOUT" = "COMPLETED" ]; then
+    echo ">> Deployment completed successfully!"
+    exit 0
+  fi
+  if [ "$ROLLOUT" = "FAILED" ]; then
+    echo ">> Deployment failed (rolled back by circuit breaker)"
+    exit 1
+  fi
+  sleep 10
+done
+
+echo "Deployment did not complete within timeout"
+exit 1
