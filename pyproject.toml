@@ -1,0 +1,46 @@
+# Ruff — Modern Python Linter & Formatter (10x faster than flake8)
+# Enforced as a hard Quality Gate in Jenkins CI pipeline
+
+[tool.ruff]
+target-version = "py312"
+line-length    = 100
+
+[tool.ruff.lint]
+# Full rule set enforced in CI — zero tolerance
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort import ordering
+  "UP",  # pyupgrade — enforce modern Python syntax
+  "B",   # flake8-bugbear — catches likely bugs
+  "S",   # flake8-bandit — security checks
+  "N",   # pep8-naming conventions
+  "ANN", # type annotation enforcement
+]
+ignore = [
+  "S101",    # allow assert in test files
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "ANN"]  # relax security/annotation rules in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# ── Coverage Gate ─────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+pythonpath   = ["."]
+testpaths    = ["tests"]
+addopts      = "--cov=app --cov-report=term-missing --cov-fail-under=90 -v"
+
+[tool.coverage.run]
+source = ["app"]
+omit   = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing  = true
+skip_covered  = false
+fail_under    = 90
