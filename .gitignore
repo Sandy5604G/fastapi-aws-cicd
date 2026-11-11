@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
 reports/
 .coverage
 infra/.terraform/
@@ -8,3 +9,11 @@ infra/*.tfstate*
 infra/terraform.tfvars
 new-td.json
 td.json
+
+# Frontend build & private environment
+frontend/node_modules
+frontend/node_modules/
+frontend/dist/
+*.local
+.env.local
+frontend/.env.local

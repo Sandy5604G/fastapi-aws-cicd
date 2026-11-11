@@ -51,6 +51,33 @@ python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 uvicorn app.main:app --reload
 ```
 
+### Option C: Unified CMD Automation CLI (`cicd.sh`)
+```bash
+# Display all available commands and workflow options
+./cicd.sh help
+
+# Format & lint code with Ruff
+./cicd.sh format
+
+# Run Pytest with >=80% coverage check
+./cicd.sh test
+
+# Build & test Docker container locally
+./cicd.sh build
+
+# Commit changes (with automated formatting & test gates)
+./cicd.sh commit "feat: your descriptive message"
+
+# Push to GitHub to trigger Jenkins CI/CD
+./cicd.sh push
+
+# Full automated release in 1 command (Format -> Test -> Build -> Commit -> Push)
+./cicd.sh release "feat: production release"
+
+# Launch local FastAPI backend and Control Center dashboard
+./cicd.sh start
+```
+
 ---
 
 ## Deployment Guide
