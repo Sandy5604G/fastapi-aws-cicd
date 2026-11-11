@@ -5,7 +5,29 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 START = time.time()
-VERSION = os.getenv("APP_VERSION", "dev")
+
+
+def get_version():
+    ver = os.getenv("APP_VERSION")
+    if ver and ver != "dev":
+        return ver
+    try:
+        import subprocess
+
+        res = subprocess.run(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return "dev"
+
+
+VERSION = get_version()
 
 app = FastAPI(title="FastAPI CI/CD on AWS ECS", version=VERSION)
 
@@ -74,10 +96,12 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"version": VERSION, "uptime_seconds": round(time.time() - START, 1)}
+    return {"version": get_version(), "uptime_seconds": round(time.time() - START, 1)}
 
 
 # Demo live update Wed Nov  4 08:44:27 PM IST 2026
 
 # Manual test update Wed Nov  4 08:53:08 PM IST 2026
 # Demo update Thu Nov  5 07:18:42 PM IST 2026
+
+# Live Telemetry Update Thu Nov 12 12:43:35 AM IST 2026 — Release v2.0
